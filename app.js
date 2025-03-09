@@ -6,6 +6,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const nodemailer = require('nodemailer');
 const crypto = require('crypto');
+const port = process.env.PORT || 4000;
 // const twilio = require('twilio');
 app.use(express.json());
 
