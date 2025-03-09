@@ -1,0 +1,127 @@
+require('dotenv').config();
+const express = require('express');
+const app = express();
+const cors = require('cors');
+const mongoose = require('mongoose');
+const bcrypt = require('bcryptjs');
+const nodemailer = require('nodemailer');
+const crypto = require('crypto');
+// const twilio = require('twilio');
+app.use(express.json());
+
+const mongoUrl = process.env.MONGO_URL;
+
+mongoose.connect(mongoUrl)
+  .then(() => console.log('DATABASE CONNECTED'))
+  .catch((e) => console.log(e));
+
+require('./UserDetails');
+const User = mongoose.model("UserInfo");
+
+const transporter = nodemailer.createTransport({
+  service: 'gmail',
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS
+  }
+});
+
+const verificationCodes = {}; // Store codes temporarily
+
+// const vonage = new Vonage({
+//   apiKey: process.env.NEXMO_API_KEY,
+//   apiSecret: process.env.NEXMO_API_SECRET
+// });
+
+// function sendSms(to, message) {
+//   return new Promise((resolve, reject) => {
+//     vonage.sms.send({ to, from: process.env.NEXMO_PHONE_NUMBER, text: message }, (err, responseData) => {
+//       if (err) {
+//         reject(err);
+//       } else {
+//         resolve(responseData);
+//       }
+//     });
+//   });
+// }
+
+app.post("/send-verification", async (req, res) => {
+  const { email, mobile } = req.body;
+  const oldUser = await User.findOne({ $or: [{ email }, { mobile }] });
+
+
+  if (oldUser) {
+    return res.send({ data: 'User already exists!' });
+  }
+
+  const code = crypto.randomInt(100000, 999999).toString();
+  verificationCodes[email] = code;
+
+  const mailOptions = {
+    from: process.env.EMAIL_USER,
+    to: email,
+    subject: 'Email Verification Code',
+    text: `Your verification code is: ${code}`
+  };
+
+  transporter.sendMail(mailOptions, (error, info) => {
+    if (error) {
+      return res.send({ status: "error", data: error.message });
+    }
+    res.send({ status: "OK", data: "Verification email sent" });
+  });
+
+
+//   // Add logic to send verification code to mobile number
+//   // Assuming you have a function sendSms to send SMS
+//   sendSms(mobile, `Your verification code is: ${code}`)
+//     .then(() => {
+//       res.send({ status: "OK", data: "Verification email and SMS sent" });
+//     })
+//     .catch((error) => {
+//       res.send({ status: "error", data: error.message });
+//     });
+});
+
+app.post("/register", async (req, res) => {
+  const { name, email, mobile, password, code } = req.body;
+
+  if (verificationCodes[email] !== code) {
+    return res.send({ status: "error", data: "Invalid verification code" });
+  }
+
+  const encryptedPassword = await bcrypt.hash(password, 10);
+
+  try {
+    await User.create({ name, email, mobile, password: encryptedPassword });
+    delete verificationCodes[email];
+    res.send({ status: "OK", data: "User Created" });
+  } catch (error) {
+    res.send({ status: "error", data: error.message });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  const { email, password } = req.body;
+
+  try {
+    const user = await User.findOne({ email });
+    if (!user) {
+      return res.send({ status: "error", data: "User not found" });
+    }
+
+    const isPasswordValid = await bcrypt.compare(password, user.password);
+    if (!isPasswordValid) {
+      return res.send({ status: "error", data: "Invalid password" });
+    }
+
+    // Generate JWT token
+    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
+
+    res.send({ status: "OK", data: "Login successful", token });
+  } catch (error) {
+    res.send({ status: "error", data: error.message });
+  }
+});
+
+app.listen(4000, () => console.log("Server started on port 4000"));
