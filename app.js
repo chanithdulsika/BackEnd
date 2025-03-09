@@ -91,10 +91,10 @@ app.post("/register", async (req, res) => {
     return res.send({ status: "error", data: "Invalid verification code" });
   }
 
-  const encryptedPassword = await bcrypt.hash(password, 10);
+  console.log("password during registration:", password);
 
   try {
-    await User.create({ name, email, mobile, password: encryptedPassword });
+    await User.create({ name, email, mobile, password});
     delete verificationCodes[email];
     res.send({ status: "OK", data: "User Created" });
   } catch (error) {
@@ -111,16 +111,17 @@ app.post("/login", async (req, res) => {
       return res.send({ status: "error", data: "User not found" });
     }
 
-    const isPasswordValid = await bcrypt.compare(password, user.password);
-    if (!isPasswordValid) {
+    console.log("Stored hashed password:", user.password);
+    console.log("Entered plain text password:", password);
+
+    if (password !== user.password) {
       return res.send({ status: "error", data: "Invalid password" });
     }
 
-    // Generate JWT token
-    const token = jwt.sign({ id: user._id }, process.env.JWT_SECRET, { expiresIn: '1h' });
 
-    res.send({ status: "OK", data: "Login successful", token });
+    res.send({ status: "OK", data: "Login successful"});
   } catch (error) {
+    console.log("Error during login:", error.message);
     res.send({ status: "error", data: error.message });
   }
 });
